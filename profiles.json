@@ -1,0 +1,154 @@
+{
+  "Connectors": {
+    "AWS::Events::Rule": {
+      "AWS::SNS::Topic": {
+        "References": {
+          "Path": "%{Source}.Properties.Targets",
+          "Template": {
+            "Id": "%{Destination}",
+            "Arn": "%{Destination.Arn}"
+          }
+        }
+      }
+    },
+    "AWS::Lambda::Function": {
+      "AWS::SQS::Queue": {
+        "References": {
+          "Path": "%{Source}.Properties.Environment.Variables",
+          "Template": {
+            "%{Destination}_URL": "Ref: %{Destination}"
+          }
+        }
+      }
+    },
+    "AWS::SQS::Queue": {
+      "AWS::Lambda::Function": {
+        "Resources": {
+          "AWS::Lambda::EventSourceMapping": {
+            "SchemaOverrides": {
+              "ExcludeProperties": [
+                "AmazonManagedKafkaEventSourceConfig",
+                "BisectBatchOnFunctionError",
+                "DestinationConfig",
+                "DocumentDBEventSourceConfig",
+                "MaximumRecordAgeInSeconds",
+                "MaximumRetryAttempts",
+                "ParallelizationFactor",
+                "Queues",
+                "SelfManagedEventSource",
+                "SelfManagedKafkaEventSourceConfig",
+                "StartingPosition",
+                "StartingPositionTimestamp",
+                "Topics",
+                "TumblingWindowInSeconds"
+              ],
+              "Override": {
+                "properties": {
+                  "BatchSize": {
+                    "default": 10
+                  },
+                  "EventSourceArn": {
+                    "default": "%{Source.Arn}"
+                  },
+                  "FunctionName": {
+                    "default": "%{Destination.Arn}"
+                  },
+                  "MaximumBatchingWindowInSeconds": {
+                    "default": 0
+                  }
+                },
+                "required": ["EventSourceArn", "FunctionName"]
+              }
+            },
+            "ConditionalSchemaOverrides": [
+              {
+                "Condition": "%{Source.FifoQueue} == True",
+                "Override": {
+                  "properties": {
+                    "BatchSize": {
+                      "maximum": 10
+                    }
+                  }
+                }
+              },
+              {
+                "Condition": "%{This.BatchSize} > 10",
+                "Override": {
+                  "properties": {
+                    "MaximumBatchingWindowInSeconds": {
+                      "minimum": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "Permissions": {
+    "AWS::Lambda::Function": {
+      "AWS::SQS::Queue": {
+        "Type": "AWS_IAM_ROLE_MANAGED_POLICY",
+        "Properties": {
+          "SourcePolicy": true,
+          "AccessCategories": {
+            "Read": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": ["sqs:ReceiveMessage", "sqs:GetQueueAttributes"],
+                  "Resource": ["%{Destination.Arn}"]
+                }
+              ]
+            },
+            "Write": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sqs:DeleteMessage",
+                    "sqs:SendMessage",
+                    "sqs:ChangeMessageVisibility",
+                    "sqs:PurgeQueue"
+                  ],
+                  "Resource": ["%{Destination.Arn}"]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "AWS::SQS::Queue": {
+      "AWS::Lambda::Function": {
+        "Type": "AWS_IAM_ROLE_MANAGED_POLICY",
+        "Properties": {
+          "SourcePolicy": false,
+          "DependedBy": "DESTINATION_EVENT_SOURCE_MAPPING",
+          "AccessCategories": {
+            "Write": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": ["sqs:DeleteMessage"],
+                  "Resource": ["%{Source.Arn}"]
+                }
+              ]
+            },
+            "Read": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": ["sqs:ReceiveMessage", "sqs:GetQueueAttributes"],
+                  "Resource": ["%{Source.Arn}"]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
