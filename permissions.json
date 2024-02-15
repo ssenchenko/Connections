@@ -1,0 +1,47 @@
+{
+    "AWS::SQS::Queue": {
+        // these classification should come from SDF files
+        // otherwise our classification will be pretty simple: Read, List, Write, Tag etc
+        "receiveMessages": {
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "sqs:ReceiveMessage"
+                    ],
+                    "Resource": [
+                        "%{Resource.Arn}"
+                    ]
+                }
+            ]
+        },
+        "manageMessages": {
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "sqs:DeleteMessage",
+                        "sqs:ChangeMessageVisibility",
+                        "sqs:PurgeQueue"
+                    ],
+                    "Resource": [
+                        "%{Resource.Arn}"
+                    ]
+                }
+            ]
+        },
+        "sendMessages": {
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "sqs:SendMessage"
+                    ],
+                    "Resource": [
+                        "%{Resource.Arn}"
+                    ]
+                }
+            ]
+        }
+    }
+}
