@@ -1,0 +1,254 @@
+{
+    // connector id is necessary for connector composition
+    "LambdaFunction#SqsQueue#1": {
+        "Source": {
+            "AWS::Lambda::Function": [
+                "DeadLetterConfig.TargetArn"
+            ]
+        },
+        "Target": {
+            "AWS::SQS::Queue": [
+                "%Arn"
+            ]
+        }
+    },
+    "LambdaFunction#SqsQueue#2": {
+        "Source": {
+            "AWS::Lambda::Function": [
+                // it's pipeline
+                "Environment.Variables",
+                "%Values", // get Values() in {"key": "value"} map
+                "%OneOf" // forEach
+            ]
+        },
+        "Target": {
+            "AWS::SQS::Queue": [
+                "%Url"
+            ]
+        }
+    },
+    "IamPolicy#IamRole#1": {
+        "Source": {
+            "AWS::IAM::Policy": [
+                "Roles",
+                "%OneOf"
+            ]
+        },
+        "Target": {
+            "AWS::IAM::Role": [
+                "%Arn"
+            ]
+        }
+    },
+    "LambdaEventSourceMapping#LambdaFunction#1": {
+        "Source": {
+            "AWS::Lambda::EventSourceMapping": [
+                "FunctionName"
+            ]
+        },
+        "Target": {
+            "AWS::Lambda::Function": [
+                {
+                    "%Or": [
+                        "%Name",
+                        "%Arn",
+                        "^%{%Arn}:*$", // Function version Arn
+                        "%PartialArn" // skip arn:aws:lambda:
+                    ]
+                }
+            ]
+        }
+    },
+    "LambdaFunction#SqsQueue#DeadLetter#1": {
+        "Resources": {
+            "1": "AWS::Lambda::Function",
+            "2": "AWS::SQS::Queue",
+            "3": {
+                "CanCreate": true,
+                "useExisting": true,
+                "Type": "AWS::IAM::Policy",
+                "Permissions": {
+                    // all these permissions are required for code generation
+                    "All": [
+                        "useDeadLetter"
+                    ]
+                }
+            },
+            "4": {
+                "CanCreate": false, // function role should exist before connecting; no need to provide properties
+                "UseExisting": true,
+                "Type": "AWS::IAM::Role"
+                // not used for code generation, no need to provide permissions here
+                // if we want to check that connection exists, we look for permissions in "Permissions" section
+            }
+        },
+        "Connections": {
+            "LambdaFunction#SqsQueue#1": {
+                "Source": "1",
+                "Target": "2",
+                "IsRequired": true,
+                "CodeGeneration": true
+            },
+            "LambdaFunction#IamRole#1": {
+                "Source": 1,
+                "Target": 3,
+                "IsRequired": true,
+                "CodeGeneration": true
+            },
+            "IamPolicy#IamRole#1": {
+                "Source": 4,
+                "Target": 3,
+                "IsRequired": false, // Connection can exist without policy resource
+                "CodeGeneration": true // but we prefer to generate code with a policy
+            }
+        },
+        "Permissions": {
+            // this permissions category should be added in 
+            "useDeadLetter": {
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "sqs:SendMessage"
+                        ],
+                        "Resource": [
+                            "%{2.Arn}"
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    "LambdaFunction#SqsQueue#Subscription#1": {
+        "Resources": {
+            "5": "AWS::SQS::Queue",
+            "6": "AWS::Lambda::Function",
+            "1": {
+                "CanCreate": true,
+                "useExisting": true,
+                "Type": "AWS::IAM::ManagedPolicy",
+                "Permissions": [
+                    "deleteMessages",
+                    "receiveMessages"
+                ],
+                "DependsOn": [
+                    "3"
+                ]
+            },
+            "2": {
+                "CanCreate": false,
+                "UseExisting": true,
+                "Type": "AWS::IAM::Role"
+            },
+            "3": {
+                "CanCreate": true,
+                "UseExisting": true,
+                "Type": "AWS::Lambda::EventSourceMapping",
+                // list of properties which should or may be present in the resource
+                // this is for code generation
+                // required assets are in schema ovverides, if they are different from current schema
+                "Properties": [
+                    "BatchSize",
+                    "Enabled",
+                    "EventSourceArn",
+                    "FilterCtriteria",
+                    "FunctionName",
+                    "MaximumBatchingWindowInSeconds"
+                ],
+                // merge it with a schema copy (not changing schema itself) and generate connection-specific resource
+                "SchemaOverrides": {
+                    // part of override will be to remove all properties which are not in "Properties" list
+                    "properties": {
+                        "BatchSize": {
+                            "default": 10
+                        },
+                        "MaximumBatchingWindowInSeconds": {
+                            "default": 0
+                        }
+                    },
+                    // making EventSourceArn required, as it is for SQS Event
+                    "required": [
+                        "EventSourceArn",
+                        "FunctionName"
+                    ]
+                }
+            },
+            "4": {
+                "CanCreate": false, // we're not creating layers if they are not provided
+                "UseExisting": true,
+                "Type": "AWS::Lambda::LayerVersion"
+            }
+        },
+        "Connections": {
+            "LambdaEventSourceMapping#SqsQueue#1": {
+                "Source": "3",
+                "Target": "5",
+                "IsRequired": true,
+                "CodeGeneration": true
+            },
+            "%Or": {
+                "LambdaEventSourceMapping#LambdaFunction#1": {
+                    "Source": "3",
+                    "Target": "6",
+                    "IsRequired": true,
+                    "CodeGeneration": true
+                },
+                "%And": {
+                    "LambdaEventSourceMapping#LambdaLayerVersion#1": {
+                        "Source": "3",
+                        "Target": "4",
+                        "IsRequired": false,
+                        "CodeGeneration": false // we're not using LayerArn for connections while generating code
+                    },
+                    "LambdaFunction#LambdaLayerVersion#1": {
+                        "Source": "6",
+                        "Target": "4",
+                        "IsRequired": false, // we're not creating layers if they are not provided
+                        "CodeGeneration": false // we're not using LayerArn for connections while generating code
+                    }
+                }
+            },
+            "LambdaFunction#IamRole#1": {
+                "Source": 6,
+                "Target": 2,
+                "IsRequired": true,
+                "CodeGeneration": true
+            },
+            "IamPolicy#IamRole#1": {
+                "Source": 1,
+                "Target": 2,
+                "IsRequired": false, // Connection can exist without policy resource
+                "CodeGeneration": true // but we prefer to generate code with a policy
+            }
+        },
+        "Permissions": {
+            "deleteMessages": {
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "sqs:DeleteMessage"
+                        ],
+                        "Resource": [
+                            "%{5.Arn}"
+                        ]
+                    }
+                ]
+            },
+            "receiveMessages": {
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "sqs:ReceiveMessage",
+                            "sqs:GetQueueAttributes" // is it required?
+                        ],
+                        "Resource": [
+                            "%{5.Arn}"
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+}

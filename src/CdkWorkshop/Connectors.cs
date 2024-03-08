@@ -143,10 +143,11 @@ public class FunctionToQueueConnector : Construct, IConnectorWithEnvVar, IConnec
 // namespace Aws.Blueprints.Connectors
 public class FunctionToQueueSubscription : IPropsFunctionToQueueSubscription
 {
-    public int BatchSize { get; set; }
-    public bool Enabled { get; set; }
-    public string FilterPolicy { get; set; }
-    public Seconds MaximumBatchingWindow { get; set; }
+    public int? BatchSize { get; set; }
+    public bool? Enabled { get; set; }
+    public string? FilterPolicy { get; set; }
+    public Seconds? MaximumBatchingWindow { get; set; }
+    public HashSet<IPermission>? Permissions { get; set; }
 }
 
 // namespace Aws.Blueprints.Connectors.Permissions.FunctionToQueueSubscription
@@ -169,15 +170,24 @@ public class DeleteMessage : IPermission
 
 // ======================== Function et Queue ========================
 
-public interface IPropsFunctionToQueueSubscription
+public interface IFunctionToQueueSubscription
 {
-    public int BatchSize { get; set; }
-    public bool Enabled { get; set; }
-    public string FilterPolicy { get; set; }
-    public Seconds MaximumBatchingWindow { get; set; }
+    int BatchSize { get; set; }
+    bool Enabled { get; set; }
+    string FilterPolicy { get; set; }
+    Seconds MaximumBatchingWindow { get; set; }
 }
 
-public interface IEsmSubscriptionToQueue : IPropsFunctionToQueueSubscription
+public interface IPropsFunctionToQueueSubscription
+{
+    int? BatchSize { get; set; }
+    bool? Enabled { get; set; }
+    string? FilterPolicy { get; set; }
+    Seconds? MaximumBatchingWindow { get; set; }
+    HashSet<IPermission>? Permissions { get; set; }
+}
+
+public interface IEsmSubscriptionToQueue : IFunctionToQueueSubscription
 {
     public CfnQueue EventSource { get; }
     public CfnFunction Function { get; }
@@ -207,7 +217,7 @@ public class ConnectorFunctionSubscribesToQueue : IEsmSubscriptionToQueue
         Construct scope,
         CfnFunction lambda,
         CfnQueue queue,
-        HashSet<IPermission> permissions,
+
         IPropsFunctionToQueueSubscription props // not null-able here to be explicit
     )
     {
